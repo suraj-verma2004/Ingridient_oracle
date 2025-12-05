@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Results for {{ ingredient }}</title>
+    <style>
+        /*CSS */
+        body { font-family: sans-serif; }
+        .container { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; }
+        .recipe-card { border: 1px solid #ccc; border-radius: 8px; text-align: center; background-color: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.1); position: relative; overflow: hidden; flex: 1 1 200px; max-width: 220px; }
+        .recipe-card img { max-width: 100%; height: auto; display: block; }
+        .recipe-card h3 { padding: 0 10px 10px; margin: 10px 0 0; font-size: 1rem; }
+        a { text-decoration: none; color: black; }
+        .logo { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; background: rgba(255, 255, 255, 0.8); border-radius: 50%; padding: 2px; }
+     
+        .btn-primary { 
+            background-color: #007bff; 
+            color: white; 
+            padding: 10px 20px; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        .btn-search-again {
+            background-color: #28a745; 
+            color: white; 
+            padding: 10px 20px; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .btn-search-again:hover {
+            background-color: #1e7e34;
+        }
+        .note-online {
+            color: #6c757d; 
+            font-size: 0.9rem; 
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="text-align: center;">Recipes with '{{ ingredient }}'</h1>
+
+    <h3 style="text-align: center; font-size: 1.2rem; color: #555;">
+        {% if data_source == 'online' %}
+            Source: Global Recipes (Online) 🌐
+        {% else %}
+            Source: Indian Recipes (Offline) 🇮🇳
+        {% endif %}
+    </h3>
+
+    <div class="container">
+        {% if recipes %}
+            {% for recipe in recipes %}
+                {% if data_source == 'online' %}
+                    <a href="/recipe/online/{{ recipe.RecipeID_online }}"> 
+                {% else %}
+                    <a href="/recipe/offline/{{ recipe.RecipeID_offline }}"> 
+                {% endif %}
+                
+                <div class="recipe-card">
+                        
+                    {% if data_source == 'offline' %}
+                        {% if recipe.is_veg %}
+                            <img src="{{ url_for('static', filename='images/veg.png') }}" class="logo" alt="Veg">
+                        {% else %}
+                            <img src="{{ url_for('static', filename='images/nonveg.png') }}" class="logo" alt="Non-Veg">
+                        {% endif %}
+                    {% endif %}
+                        
+                    {% if data_source == 'online' and recipe.image_url %}
+                        <img src="{{ recipe.image_url }}" alt="{{ recipe.TranslatedRecipeName }}">
+                    {% else %}
+                        <img src="{{ url_for('static', filename='images/no_image_offline.png') }}" alt="No Image Available" style="opacity: 0.8;">
+                    {% endif %}
+
+                    <h3>{{ recipe.TranslatedRecipeName }}</h3>
+                </div>
+                </a>
+            {% endfor %}
+        {% else %}
+            <p>Sorry, no recipes found with '{{ ingredient }}' in the dataset.</p>
+        {% endif %}
+    </div>
+
+    {% if next_start %}
+        <div id="load-more-container" style="text-align: center; margin-top: 30px;">
+            <button id="load-more-btn" 
+                    data-start="{{ next_start }}" 
+                    data-ingredient="{{ ingredient }}" 
+                    data-source="{{ data_source }}"
+                    data-total-count="{{ total_count }}"
+                    class="btn btn-primary">
+                View More ({{ total_count - next_start }} remaining)
+            </button>
+            {% if data_source == 'online' %}
+                <p class="note-online">Note: Online API results are limited to the first 15 for simplicity.</p>
+            {% endif %}
+        </div>
+    {% endif %}
+    
+    <div style="text-align: center; margin-top: 20px;"><button class="btn btn-search-again">
+        <a href="/">Search Again</a></button>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const loadMoreBtn = document.getElementById('load-more-btn');
+            const container = document.querySelector('.container');
+            
+            if (loadMoreBtn) {
+                const dataSource = loadMoreBtn.getAttribute('data-source');
+                const staticPath = '{{ url_for("static", filename="") }}'; 
+               
+                if (dataSource === 'online') {
+                    loadMoreBtn.textContent = 'Results Limited (Online API)';
+                    loadMoreBtn.disabled = true;
+                    return;
+                }
+                
+                loadMoreBtn.addEventListener('click', function() {
+                    const ingredient = this.getAttribute('data-ingredient');
+                    const start_index = this.getAttribute('data-start');
+                    const total_count = parseInt(this.getAttribute('data-total-count'));
+
+                    this.textContent = 'Loading...';
+                    this.disabled = true;
+
+                    fetch('/load_more', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: `ingredient=${ingredient}&start_index=${start_index}&data_source=${dataSource}`
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        
+                        if (data.recipes && data.recipes.length > 0) {
+                            
+                            data.recipes.forEach(recipe => {
+                                
+                                const recipeID = recipe.RecipeID_offline; 
+                                const logoPath = recipe.is_veg ? 'veg.png' : 'nonveg.png';
+
+                                const recipeHtml = `
+                                    <a href="/recipe/offline/${recipeID}"> 
+                                        <div class="recipe-card">
+                                            <img src="${staticPath}images/${logoPath}" class="logo" alt="${recipe.is_veg ? 'Veg' : 'Non-Veg'}">
+                                            <img src="${staticPath}images/no_image_offline.png" alt="No Image Available" style="opacity: 0.8;">
+                                            <h3>${recipe.TranslatedRecipeName}</h3>
+                                        </div>
+                                    </a>
+                                `;
+                                container.insertAdjacentHTML('beforeend', recipeHtml);
+                            });
+
+                            if (data.next_start !== null) {
+                                loadMoreBtn.setAttribute('data-start', data.next_start);
+                                const remaining = total_count - data.next_start;
+                                loadMoreBtn.textContent = `View More (${remaining} remaining)`;
+                                loadMoreBtn.disabled = false;
+                            } else {
+                                loadMoreBtn.remove(); 
+                                document.getElementById('load-more-container').innerHTML = '<p>All recipes loaded!</p>';
+                            }
+
+                        } else {
+                            loadMoreBtn.remove();
+                            document.getElementById('load-more-container').innerHTML = '<p>No more recipes found.</p>';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading more recipes:', error);
+                        loadMoreBtn.textContent = 'Error loading. Try again.';
+                        loadMoreBtn.disabled = false;
+                    });
+                });
+            }
+        });
+    </script>
+</body>
+</html>
